@@ -1,0 +1,7 @@
+[general]
+view_command = mplayer %s
+video_path = ~/.clitv/videos
+
+[youtube]
+search = clitv-youtube --api-key=google-api-key search %s
+download = clitv-youtube -o %s download %s

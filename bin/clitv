@@ -1,0 +1,263 @@
+#!/usr/bin/env python
+"""
+clitv
+Usage:
+  clitv [--source=<source>] --interactive
+  clitv [--source=<source>] search <keyword>
+  clitv --source=<source> fetch <identifer>
+  clitv --source=<source> watch <identifier>
+  clitv list-sources
+  clitv --version
+  clitv (-h | --help)
+
+Options:
+  -h --help          Show this message.
+  --version          Show version number.
+  --source=<source>  Restrict to one source
+"""
+from docopt import docopt
+import os
+import clitv
+from clitv.video import view
+from clitv.configuration import config
+from clitv.search import search
+import urwid
+from functools import reduce
+
+
+class ScrollBoxItem(urwid.Text):
+    def __init__(self, identifier, text):
+        self.identifier = identifier
+        super(ScrollBoxItem, self).__init__(text)
+
+class ScrollBox(urwid.ListBox):
+    def __init__(self, options_specs, callback):
+        self.callback = callback
+        elements = [ScrollBoxItem(x[0], x[1]) for x in options_specs]
+        attr_elements = [urwid.AttrMap(e, None, 'reversed') for e in elements]
+        super(ScrollBox, self).__init__(attr_elements)
+
+    def keypress(self, size, key):
+        focused_widget, idx = self.get_focus()
+        if focused_widget and key in ['up'] and idx > 0:
+            self.set_focus(idx-1)
+        elif focused_widget and key in ['down'] and idx < len(self.body)-1:
+            self.set_focus(idx+1)
+        elif focused_widget and key in ['enter']:
+            self.callback(focused_widget.original_widget.identifier)
+        else:
+            return super(ScrollBox, self).keypress(size, key)
+
+class Mode(urwid.Text):
+    def __init__(self, mode_name):
+        lst_m = list(mode_name)
+        self.key = lst_m.pop(0)
+        self.label = "<" + self.key + ">" + "".join(lst_m) + " "
+        super(Mode, self).__init__(self.label)
+        
+class ModeLine(urwid.Columns):
+    def __init__(self, modes, callback, title="", message=""):
+        self.modes = [Mode(mode) for mode in modes]
+        self.map1 = [urwid.AttrMap(m, None, 'reversed') for m in self.modes]
+        self.modes_container = urwid.Columns(self.map1)
+        f = lambda a,b : len(a.label) + len(b.label)
+        self.mc_len = reduce(f, self.modes)
+        self.callback = callback
+        self.message = urwid.Text(message)
+        self.title = urwid.Text(title + " ")
+        self.separator = urwid.Text(" || ")
+        body = [(len(self.title.text), self.title),
+                (4, self.separator),
+                (self.mc_len+3, self.modes_container),
+                (4, self.separator),
+                self.message]
+        super(ModeLine, self).__init__(body)
+        
+    def keypress(self, size, key):
+        for (mode, options) in self.modes_container.contents:
+            if key == mode.original_widget.key:
+                self.modes_container.set_focus(mode)
+                focused_widget = self.modes_container.get_focus()
+                self.callback(focused_widget.original_widget)
+                break
+
+class QueryInput(urwid.Edit):
+    def __init__(self, callback, capture_callback, message_callback, release_message):
+        self.callback = callback
+        self.capture_callback = capture_callback
+        self.capturing = False
+        self.release_message = release_message
+        self.message_callback = message_callback
+        super(QueryInput, self).__init__()
+    def keypress(self, size, key):
+        if key == "esc":
+            self.release_input()
+            self.edit_text = self.edit_text[:-1]
+            return
+        elif key == "backspace":
+            self.edit_text = self.edit_text[:-2] + "_"
+            return
+        elif len(key) > 1 and key != "enter":
+            pass
+        elif key != "enter":
+            self.edit_text = self.edit_text[:-1] + key + "_"
+        else:
+            self.capturing = False
+            self.release_input()
+            self.callback(self.edit_text[:-1])
+            self.edit_text = ""
+
+    def release_input(self):
+        self.release_callback(self)
+        self.message_callback(self.release_message)
+        
+    def capture_input(self):
+        self.message_callback("Press <esc> to lose focus")
+        self.capturing = True
+        self.release_callback = self.capture_callback(self)
+        self.edit_text += "_"
+            
+class SearchScreen(urwid.Frame):
+    def __init__(self, sources, callback, capture_callback, message_callback):
+        self.callback = callback
+        self.capture_callback = capture_callback
+        self.message_callback = message_callback
+        self.sources = sources
+        self.search_input = QueryInput(self.search_term,
+                                       self.capture_callback,
+                                       self.message_callback,
+                                       "Press <s> to type keywords")
+        self.search_results = urwid.Filler(urwid.Text("Type in your research", align="center"))
+        super(SearchScreen, self).__init__(header=self.search_input,
+                                           body=self.search_results)
+
+    def search_term(self, terms):
+        results = clitv.search.search(terms)
+        self.body = ScrollBox([((r['source'], r['id'], r['title']), r['title']) for r in results],
+                               self.view_vid)
+
+    def view_vid(self, option):
+        (source, identifier, title) = option
+        self.callback(source, identifier, title)
+
+    def keypress(self, size, key):
+        if key == "s":
+            self.search_input.capture_input()
+        else:
+            self.body.keypress(size, key)
+
+
+class ViewScreen(urwid.Frame):
+    def __init__(self, source, identifier, title, go_back):
+        self.source = source
+        self.identifier = identifier
+        self.title = title
+        self.go_back = go_back
+        self.view_proc, self.dl_proc = self.read_video()
+        hd = urwid.Text("What to do with : "+self.title)
+        self.hd = urwid.AttrMap(hd, None, "reversed")
+        menu_spec = [("delete", "Delete it once played."),
+                     ("record", "Keep it in library.")]
+        self.menu = ScrollBox(menu_spec, self.handle_video)
+        super(ViewScreen, self).__init__(header=self.hd, body=self.menu)
+
+    def handle_video(self, identifier):
+        if identifier == "delete":
+            self.go_back()
+            _ = self.dl_proc.communicate()
+            _ = self.view_proc.communicate()
+            clitv.video.remove_from_tmp(self.identifier)
+        elif identifier == "record":
+            self.go_back()
+            _ = self.dl_proc.communicate()
+            _ = self.view_proc.communicate()
+            clitv.video.save_from_tmp(self.identifier, self.title)
+            clitv.video.remove_from_tmp(self.identifier)
+
+    def read_video(self):
+        proc = clitv.video.view(self.source, self.identifier)
+        return proc
+    
+
+class MainFrame(urwid.Frame):
+    def __init__(self, sources):
+        homepage_specs = [
+            ("search", "Search"),
+            ("stash", "Stash"),
+            ("select-sources", "Select sources"),
+            ("aga", "aga")
+        ]
+        self.search = SearchScreen(sources,
+                                   self.view_vid,
+                                   self.capture_input,
+                                   self.show_message_modline)
+        self.modeline = ModeLine(["search", "library"],
+                                 self.switch_mode,
+                                 title = "clitv")
+        self.input_stealer = None
+        self.switch_to_search()
+        self.search.search_input.capture_input()
+        super(MainFrame, self).__init__(body=self.search,
+                                        footer=self.modeline)
+
+    def show_message_modline(self, message):
+        self.modeline.message.set_text(message)
+
+    def switch_to_search(self):
+        self.footer = self.modeline
+        self.body = self.search
+
+    def view_vid(self, source, identifier, title):
+        self.body = ViewScreen(source, identifier, title, self.switch_to_search)
+        self.footer = None
+
+    def switch_mode(self, mode):
+        pass
+        #print(mode.key)
+
+    def capture_input(self, widget):
+        self.input_stealer = widget
+        return self.release_input
+
+    def release_input(self, widget):
+        if self.input_stealer is widget:
+            self.input_stealer = None
+        else:
+            raise Exception('Illegal input release')
+
+    def handle_homepage_action(self):
+        raise NotImplemented
+
+    def handle_search_action(self):
+        raise NotImplemented
+    
+    def keypress(self, size, key):
+        if self.input_stealer is not None:
+            self.input_stealer.keypress(size, key)
+        elif key in ['q']:
+            raise urwid.ExitMainLoop()
+        else:
+            [send_keypress(x, size, key) for x in [self.body, self.footer, self.header]]
+
+def send_keypress(widget, size, key):
+    if widget is not None:
+        widget.keypress(size, key)
+
+def start_interactive(sources):
+    palette = [
+        ('reversed', 'standout', ''),
+        ('title', 'dark gray', 'light gray')
+        ]
+    main_frame, = MainFrame(sources),
+    loop = urwid.MainLoop(main_frame,
+                          palette=palette,
+                          unhandled_input=urwid.ExitMainLoop)
+    loop.run()
+    
+if __name__ == '__main__':
+    args = docopt(__doc__, version=str(clitv.__version__))
+    #clitv.configuration.sources()
+    clitv.tools.ensure_dir(os.path.expanduser("~/.clitv"))
+    clitv.tools.ensure_dir(os.path.expanduser(config['general']['library_path']))
+    if args["--interactive"] == True:
+        start_interactive(["youtube"])

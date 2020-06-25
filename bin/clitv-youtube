@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+"""
+clitv-youtube
+Usage:
+  clitv-youtube --api-key=<key> search <keywords>
+  clitv-youtube -o <file> download <identifier>
+  clitv-youtube --version
+  clitv-youtube (-h | --help)
+
+Options:
+  -h --help            Show this message.
+  --version            Show version number.
+  --api-key=<api-key>  Google API key
+  -o <file>            Output file
+"""
+from docopt import docopt
+import clitv
+import requests
+import subprocess
+
+
+YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v="
+GOOGLE_API_URL = "https://www.googleapis.com/youtube/v3/search"
+MAX_RESULTS = 5
+
+def search(api_key, keywords):
+    payload = {
+        "key": api_key,
+        "part": "snippet",
+        "q": keywords,
+        "order": "relevance",
+        "maxResults": MAX_RESULTS
+    }
+    response = requests.get(GOOGLE_API_URL, params=payload)
+    if response.status_code == 403:
+        raise Exception("Quota exceeded") # Well... Most likely
+    response = response.json()['items']
+    return response
+
+def download(identifier, outfile):
+    identifier = strip_quotes(identifier)
+    outfile = strip_quotes(outfile)
+    subprocess.run(["youtube-dl",
+                    "-f", "best",
+                    "-o", outfile,
+                    YOUTUBE_WATCH_URL+identifier],
+                   stdout=subprocess.DEVNULL, check=True)
+
+def strip_quotes(string):
+    if string[0] == "\"":
+        string = string[1:]
+    if string[-1] == "\"":
+        string = string[:-1]
+    return string
+
+if __name__ == '__main__':
+    args = docopt(__doc__, version="0.1.0")
+    if args['search'] is True:
+        for result in search(args['--api-key'], args['<keywords>']):
+            output = []
+            try:
+                snippet = result['snippet']
+                output.append(result['id']['videoId'])
+                output.append(snippet['title'])
+                output.append(snippet['channelTitle'])
+                output.append(snippet['description'])
+            except KeyError:
+                continue
+            for x in output:
+                print(x)
+    elif args['download'] is True:
+        download(args['<identifier>'], args['-o'])
+    else:
+        #docopt should have validated user input for us
+        raise
