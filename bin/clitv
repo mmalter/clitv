@@ -120,12 +120,10 @@ class QueryInput(urwid.Edit):
         self.edit_text += "_"
 
 class Library(urwid.Frame):
-    def __init__(self, message_callback):
-        self.message_callback = message_callback
+    def __init__(self):
         library_path = os.path.expanduser(config['general']['library_path'])
         spec = [(f, f) for f in list_files()]
         self.file_list = ScrollBox(spec, self.view_file)
-        self.message_callback("Select a file")
         self.body = self.file_list
         super(Library, self).__init__(body=self.body)
     def view_file(self, f):
@@ -203,25 +201,28 @@ class MainFrame(urwid.Frame):
         self.search = SearchScreen(sources,
                                    self.view_vid,
                                    self.capture_input,
-                                   self.show_message_modline)
+                                   self.show_message_modeline)
         self.modeline = ModeLine(["search", "library"],
                                  self.switch_mode,
                                  title = "clitv")
-        self.library = Library(self.show_message_modline)
+        self.library = Library()
         self.input_stealer = None
         self.switch_to_search()
         self.search.search_input.capture_input()
         super(MainFrame, self).__init__(body=self.search,
                                         footer=self.modeline)
 
-    def show_message_modline(self, message):
+    def show_message_modeline(self, message):
         self.modeline.message.set_text(message)
 
     def switch_to_search(self):
+        self.show_message_modeline("Press <s> to type keywords")
         self.footer = self.modeline
         self.body = self.search
 
     def switch_to_library(self):
+        self.show_message_modeline("Select a file.")
+        self.library = Library()
         self.footer = self.modeline
         self.body = self.library
 
