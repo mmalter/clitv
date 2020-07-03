@@ -18,7 +18,7 @@ def download_proc(source, identifier):
 
 def view(source, identifier):
     proc_dl = download_proc(source, identifier)
-    time.sleep(2)
+    time.sleep(int(configuration.config['general']['cache_time']))
     command = configuration.config['general']['video_player']
     file = tools.get_tmpdir() + "/" + tools.sane_filename(identifier)
     partfile = tools.get_tmpdir() + "/" + identifier + ".part"

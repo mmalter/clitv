@@ -1,6 +1,7 @@
 [general]
 video_player = mplayer %s
 library_path = ~/.clitv/videos
+cache_time = 6
 
 [youtube]
 search = clitv-youtube --api-key=google-api-key search %s
