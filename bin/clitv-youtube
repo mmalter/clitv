@@ -17,6 +17,9 @@ from docopt import docopt
 import clitv
 import requests
 import subprocess
+import logging
+
+logging.basicConfig(filename="clitvyoutubelog")
 
 
 YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v="
@@ -34,6 +37,8 @@ def search(api_key, keywords):
     response = requests.get(GOOGLE_API_URL, params=payload)
     if response.status_code == 403:
         raise Exception("Quota exceeded") # Well... Most likely
+    if response.status_code == 400:
+        raise Exception(response.json()['error']['message'])
     response = response.json()['items']
     return response
 

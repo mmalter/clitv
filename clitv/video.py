@@ -6,8 +6,6 @@ import shutil
 import time
 import logging
 
-logging.basicConfig(filename="pute")
-
 def download_proc(source, identifier):
     sources = configuration.sources()
     source = sources[source]
@@ -20,17 +18,16 @@ def download_proc(source, identifier):
 
 def view(source, identifier):
     proc_dl = download_proc(source, identifier)
-    time.sleep(20)
+    time.sleep(2)
     command = configuration.config['general']['video_player']
     file = tools.get_tmpdir() + "/" + tools.sane_filename(identifier)
     partfile = tools.get_tmpdir() + "/" + identifier + ".part"
     if os.path.isfile(partfile):
         file = partfile
     command = tools.make_command(command, [file])
-    logging.error(command)
     proc_player = subprocess.Popen(command,
-                                   #stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.PIPE)
+                                   stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
     return proc_player, proc_dl
 
 def save_from_tmp(identifier, title):

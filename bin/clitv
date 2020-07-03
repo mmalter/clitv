@@ -21,6 +21,8 @@ import clitv
 from clitv.video import view
 from clitv.configuration import config
 from clitv.search import search
+from clitv.library import list_files, view_stored
+
 import urwid
 from functools import reduce
 
@@ -116,7 +118,19 @@ class QueryInput(urwid.Edit):
         self.capturing = True
         self.release_callback = self.capture_callback(self)
         self.edit_text += "_"
-            
+
+class Library(urwid.Frame):
+    def __init__(self, message_callback):
+        self.message_callback = message_callback
+        library_path = os.path.expanduser(config['general']['library_path'])
+        spec = [(f, f) for f in list_files()]
+        self.file_list = ScrollBox(spec, self.view_file)
+        self.message_callback("Select a file")
+        self.body = self.file_list
+        super(Library, self).__init__(body=self.body)
+    def view_file(self, f):
+        view_stored(f)
+
 class SearchScreen(urwid.Frame):
     def __init__(self, sources, callback, capture_callback, message_callback):
         self.callback = callback
@@ -145,7 +159,6 @@ class SearchScreen(urwid.Frame):
             self.search_input.capture_input()
         else:
             self.body.keypress(size, key)
-
 
 class ViewScreen(urwid.Frame):
     def __init__(self, source, identifier, title, go_back):
@@ -194,6 +207,7 @@ class MainFrame(urwid.Frame):
         self.modeline = ModeLine(["search", "library"],
                                  self.switch_mode,
                                  title = "clitv")
+        self.library = Library(self.show_message_modline)
         self.input_stealer = None
         self.switch_to_search()
         self.search.search_input.capture_input()
@@ -206,6 +220,10 @@ class MainFrame(urwid.Frame):
     def switch_to_search(self):
         self.footer = self.modeline
         self.body = self.search
+
+    def switch_to_library(self):
+        self.footer = self.modeline
+        self.body = self.library
 
     def view_vid(self, source, identifier, title):
         self.body = ViewScreen(source, identifier, title, self.switch_to_search)
@@ -236,6 +254,10 @@ class MainFrame(urwid.Frame):
             self.input_stealer.keypress(size, key)
         elif key in ['q']:
             raise urwid.ExitMainLoop()
+        elif key in ['l'] and not isinstance(self.body, Library):
+            self.switch_to_library()
+        elif key in ['s'] and not isinstance(self.body, SearchScreen):
+            self.switch_to_search()
         else:
             [send_keypress(x, size, key) for x in [self.body, self.footer, self.header]]
 
@@ -256,7 +278,6 @@ def start_interactive(sources):
     
 if __name__ == '__main__':
     args = docopt(__doc__, version=str(clitv.__version__))
-    #clitv.configuration.sources()
     clitv.tools.ensure_dir(os.path.expanduser("~/.clitv"))
     clitv.tools.ensure_dir(os.path.expanduser(config['general']['library_path']))
     if args["--interactive"] == True:

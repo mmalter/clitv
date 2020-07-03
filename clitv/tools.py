@@ -10,7 +10,7 @@ def make_command(command, options):
     cmd = []
     for e in command:
         if e == "%s":
-            arg = "\"" + options.pop(0) + "\""
+            arg = options.pop(0)
             cmd.append(arg)
         else:
             cmd.append(e)
