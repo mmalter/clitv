@@ -10,6 +10,7 @@ You probably also want youtube-dl and mplayer.
 
 ## Installation
 With superuser privileges :
+
     python3 setup.py install
 
 ## Configuration
