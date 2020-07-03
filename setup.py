@@ -10,5 +10,6 @@ setup(name='clitv',
       packages=['clitv'],
       package_dir={'clitv': 'clitv'},
       scripts=['bin/clitv', 'bin/clitv-youtube'],
+      python_requires='>=3.8'
       install_requires=["docopt", "urwid"],
       data_files=[('/etc', ['conf/clitv'])])
