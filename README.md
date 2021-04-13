@@ -1,5 +1,6 @@
 # clitv
 Watch stuff using your cli
+BROKEN since youtube API change.
 
 ## Compatibility
 Tested on Debian. Should work on BSDs.
